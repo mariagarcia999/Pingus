@@ -28,15 +28,37 @@ FLY_ASCII = [
     " /|\\"
 ]
 
+STONE_ASCII = [
+    " ___",
+    "(___)",
+    "  ^^^"
+]
+
 WINNER_ASCII_FRAMES = [
-    [" >o)", " /\\\\", " _\\_V"],
+    [" >o)", " /\\", " _\\_V"],
     [" (o<", " //\\", " V_/_"]
 ]
 
 LOSER_ASCII_FRAMES = [
     [" (*_", " //\\", " V_/_"],
-    [" _*)", " /\\\\", " _\\_V"]
+    [" _*)", " /\\", " _\\_V"]
 ]
+
+class Fly(threading.Thread):
+    def __init__(self, server):
+        super().__init__()
+        self.server = server
+        self.position = random.randint(5, TRACK_LENGTH - 5)
+        self.target = random.randint(0, NUM_BOTS - 1)
+        self.active = True
+
+    def run(self):
+        while self.active and not self.server.finished():
+            time.sleep(random.uniform(1.0, 2.5))
+            with self.server.lock:
+                self.position = max(5, min(TRACK_LENGTH - 5, self.position + random.choice([-1, 0, 1])))
+                self.server.fly_position = self.position
+                self.server.fly_target = self.target
 
 class Server:
     def __init__(self):
@@ -44,14 +66,22 @@ class Server:
         self.positions = [0] * NUM_BOTS
         self.finish_order = []
         self.fallen_flags = [False] * NUM_BOTS
-        self.flies = []
-        self.fly_targets = []
-        self.generate_flies()
+        self.fly_position = None
+        self.fly_target = None
+        self.fly_thread = None
+        self.stone_position = None
+        self.stone_target = None
+        self.init_obstacles()
 
-    def generate_flies(self):
-        num_flies = random.randint(0, 2)  # ahora puede haber entre 0 y 2 moscas
-        self.flies = [random.randint(5, TRACK_LENGTH - 5) for _ in range(num_flies)]
-        self.fly_targets = [random.randint(0, NUM_BOTS - 1) for _ in range(num_flies)]
+    def init_obstacles(self):
+        if random.random() < 0.5:
+            self.fly_thread = Fly(self)
+            self.fly_position = self.fly_thread.position
+            self.fly_target = self.fly_thread.target
+            self.fly_thread.start()
+        elif random.random() < 0.5:
+            self.stone_position = random.randint(5, TRACK_LENGTH - 5)
+            self.stone_target = random.randint(0, NUM_BOTS - 1)
 
     def request_move(self, bot_id):
         with self.lock:
@@ -59,21 +89,26 @@ class Server:
                 self.positions[bot_id] = 0
                 self.fallen_flags[bot_id] = False
                 return
-
             if self.positions[bot_id] < TRACK_LENGTH:
                 self.positions[bot_id] += 1
 
-                for i in range(len(self.flies)):
-                    if self.fly_targets[i] == bot_id and self.positions[bot_id] == self.flies[i]:
-                        self.fallen_flags[bot_id] = True
-                        self.flies[i] = None  # La mosca desaparece
+                if self.fly_position is not None and self.fly_target == bot_id and self.positions[bot_id] == self.fly_position:
+                    self.fallen_flags[bot_id] = True
+                    self.fly_position = None
+                    if self.fly_thread:
+                        self.fly_thread.active = False
+
+                if self.stone_position is not None and self.stone_target == bot_id and self.positions[bot_id] == self.stone_position:
+                    self.fallen_flags[bot_id] = True
+                    self.stone_position = None
 
                 if self.positions[bot_id] == TRACK_LENGTH:
                     self.finish_order.append(bot_id)
 
     def get_positions(self):
         with self.lock:
-            return list(self.positions), list(self.fallen_flags), list(self.flies), list(self.fly_targets)
+            return (list(self.positions), list(self.fallen_flags),
+                    self.fly_position, self.fly_target, self.stone_position, self.stone_target)
 
     def finished(self):
         return len(self.finish_order) == NUM_BOTS
@@ -99,7 +134,7 @@ def print_header(round_number, scores):
     print(" MARCADOR: " + " | ".join([f"{BOT_NAMES[i]}: {scores[i]} pts" for i in range(NUM_BOTS)]))
     print()
 
-def print_track(positions, fallen_flags, flies, fly_targets):
+def print_track(positions, fallen_flags, fly_pos, fly_target, stone_pos, stone_target):
     for i in range(NUM_BOTS):
         pos = min(positions[i], TRACK_LENGTH - 1)
         print("          ┌" + "─" * TRACK_LENGTH + "┐")
@@ -110,13 +145,18 @@ def print_track(positions, fallen_flags, flies, fly_targets):
             for k, ch in enumerate(part):
                 if start + k < TRACK_LENGTH:
                     line[start + k] = ch
-            for fly_pos, target_id in zip(flies, fly_targets):
-                if fly_pos is not None and target_id == i:
-                    fly_part = FLY_ASCII[j]
-                    fstart = max(0, fly_pos - len(fly_part) + 1)
-                    for k, ch in enumerate(fly_part):
-                        if fstart + k < TRACK_LENGTH:
-                            line[fstart + k] = ch
+            if fly_pos is not None and fly_target == i:
+                fly_part = FLY_ASCII[j]
+                fstart = max(0, fly_pos - len(fly_part) + 1)
+                for k, ch in enumerate(fly_part):
+                    if fstart + k < TRACK_LENGTH:
+                        line[fstart + k] = ch
+            if stone_pos is not None and stone_target == i:
+                stone_part = STONE_ASCII[j]
+                sstart = max(0, stone_pos - len(stone_part) + 1)
+                for k, ch in enumerate(stone_part):
+                    if sstart + k < TRACK_LENGTH:
+                        line[sstart + k] = ch
             prefix = f"{BOT_NAMES[i]:>9}" if j == 1 else "         "
             print(f"{prefix} │{''.join(line)}│")
         print("          └" + "─" * TRACK_LENGTH + "┘\n")
@@ -152,13 +192,16 @@ def run_race(round_number, scores):
         bot.start()
 
     while not server.finished():
-        positions, fallen_flags, flies, fly_targets = server.get_positions()
+        positions, fallen_flags, fly_pos, fly_target, stone_pos, stone_target = server.get_positions()
         print_header(round_number, scores)
-        print_track(positions, fallen_flags, flies, fly_targets)
+        print_track(positions, fallen_flags, fly_pos, fly_target, stone_pos, stone_target)
         time.sleep(REFRESH_TIME)
 
     for bot in bots:
         bot.join()
+
+    if server.fly_thread:
+        server.fly_thread.active = False
 
     for i, bot_id in enumerate(server.finish_order):
         if i == 0:
