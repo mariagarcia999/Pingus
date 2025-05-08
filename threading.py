@@ -10,20 +10,29 @@ REFRESH_TIME = 0.3
 NUM_RONDAS = 6
 BOT_NAMES = ["Pinga", "Rocky Jr", "Pingu"]
 
-# Dibujo base
 BOT_ASCII = [
     " (o_",
     " //\\",
     " V_/_"
 ]
 
-# Animación del ganador
+FALLEN_ASCII = [
+    " ~/~A",
+    "  \\\\/",
+    "  ~o)"
+]
+
+FLY_ASCII = [
+    " \\|/",
+    "  o",
+    " /|\\"
+]
+
 WINNER_ASCII_FRAMES = [
     [" >o)", " /\\\\", " _\\_V"],
     [" (o<", " //\\", " V_/_"]
 ]
 
-# Animación de los perdedores
 LOSER_ASCII_FRAMES = [
     [" (*_", " //\\", " V_/_"],
     [" _*)", " /\\\\", " _\\_V"]
@@ -34,19 +43,37 @@ class Server:
         self.lock = threading.Lock()
         self.positions = [0] * NUM_BOTS
         self.finish_order = []
+        self.fallen_flags = [False] * NUM_BOTS
+        self.flies = []
+        self.fly_targets = []
+        self.generate_flies()
+
+    def generate_flies(self):
+        num_flies = random.randint(0, 2)  # ahora puede haber entre 0 y 2 moscas
+        self.flies = [random.randint(5, TRACK_LENGTH - 5) for _ in range(num_flies)]
+        self.fly_targets = [random.randint(0, NUM_BOTS - 1) for _ in range(num_flies)]
 
     def request_move(self, bot_id):
         with self.lock:
+            if self.fallen_flags[bot_id]:
+                self.positions[bot_id] = 0
+                self.fallen_flags[bot_id] = False
+                return
+
             if self.positions[bot_id] < TRACK_LENGTH:
                 self.positions[bot_id] += 1
+
+                for i in range(len(self.flies)):
+                    if self.fly_targets[i] == bot_id and self.positions[bot_id] == self.flies[i]:
+                        self.fallen_flags[bot_id] = True
+                        self.flies[i] = None  # La mosca desaparece
+
                 if self.positions[bot_id] == TRACK_LENGTH:
                     self.finish_order.append(bot_id)
-                return True
-            return False
 
     def get_positions(self):
         with self.lock:
-            return list(self.positions)
+            return list(self.positions), list(self.fallen_flags), list(self.flies), list(self.fly_targets)
 
     def finished(self):
         return len(self.finish_order) == NUM_BOTS
@@ -69,20 +96,27 @@ def print_header(round_number, scores):
     sys.stdout.write("\033[H")
     sys.stdout.write("\033[J")
     print(f"RONDA {round_number + 1}/{NUM_RONDAS}".center(50))
-    print("MARCADOR: " + " | ".join([f"{BOT_NAMES[i]}: {scores[i]} pts" for i in range(NUM_BOTS)]))
+    print(" MARCADOR: " + " | ".join([f"{BOT_NAMES[i]}: {scores[i]} pts" for i in range(NUM_BOTS)]))
     print()
 
-def print_track(positions):
+def print_track(positions, fallen_flags, flies, fly_targets):
     for i in range(NUM_BOTS):
         pos = min(positions[i], TRACK_LENGTH - 1)
         print("          ┌" + "─" * TRACK_LENGTH + "┐")
         for j in range(3):
             line = [" "] * TRACK_LENGTH
-            part = BOT_ASCII[j]
+            part = FALLEN_ASCII[j] if fallen_flags[i] else BOT_ASCII[j]
             start = max(0, pos - len(part) + 1)
             for k, ch in enumerate(part):
                 if start + k < TRACK_LENGTH:
                     line[start + k] = ch
+            for fly_pos, target_id in zip(flies, fly_targets):
+                if fly_pos is not None and target_id == i:
+                    fly_part = FLY_ASCII[j]
+                    fstart = max(0, fly_pos - len(fly_part) + 1)
+                    for k, ch in enumerate(fly_part):
+                        if fstart + k < TRACK_LENGTH:
+                            line[fstart + k] = ch
             prefix = f"{BOT_NAMES[i]:>9}" if j == 1 else "         "
             print(f"{prefix} │{''.join(line)}│")
         print("          └" + "─" * TRACK_LENGTH + "┘\n")
@@ -118,9 +152,9 @@ def run_race(round_number, scores):
         bot.start()
 
     while not server.finished():
-        positions = server.get_positions()
+        positions, fallen_flags, flies, fly_targets = server.get_positions()
         print_header(round_number, scores)
-        print_track(positions)
+        print_track(positions, fallen_flags, flies, fly_targets)
         time.sleep(REFRESH_TIME)
 
     for bot in bots:
