@@ -2,151 +2,173 @@ import asyncio
 import random
 import sys
 
-# Constantes
-NUM_BOTS = 3
-TRACK_LENGTH = 30
-REFRESH_TIME = 0.3
-NUM_RONDAS = 6
-BOT_NAMES = ["Pinga", "Rocky Jr", "Pingu"]
+num_pingus = 3
+len_track = 30 #longitud de la pista
+waiting = 0.3 #este es el tiempo de espera entre cada movimiento
+num_rounds = 6
+names_pingus = ["Pinga", "Rocky Jr", "Pingu"]
 
-BOT_ASCII = [" (o_", " //\\", " V_/_"]
-FALLEN_ASCII = [" ~/~A", "  \\\\/", "  ~o)"]
-FLY_ASCII = [" \\|/", "  o", " /|\\"]
-WINNER_ASCII_FRAMES = [[" >o)", " /\\", " _\\_V"], [" (o<", " //\\", " V_/_"]]
-LOSER_ASCII_FRAMES = [[" (*_", " //\\", " V_/_"], [" _*)", " /\\", " _\\_V"]]
+pingus= [
+    " (o_",
+    " //\\",
+    " V_/_"
+]
+
+pingu_caido  = [
+    " ~/~A",
+    "  \\\\/",
+    "  ~o)"
+]
+
+mosca = [
+    " \\|/",
+    "  o",
+    " /|\\"
+]
+
+pingu_happy = [ #ganador
+    [" >o)", " /\\\\", " _\\_V"],
+    [" (o<", " //\\", " V_/_"]
+] 
+
+pingu_sad = [ #perdedor
+    [" (*_", " //\\", " V_/_"],
+    [" _*)", " /\\\\", " _\\_V"]
+]
+
 
 
 class Server:
     def __init__(self):
-        self.positions = [0] * NUM_BOTS
-        self.fallen_flags = [False] * NUM_BOTS
+        self.position = [0] * num_pingus #posiciones de los pingus en la pista
+        self.caido = [False] * num_pingus #indica si hay algún pingu caido:( (es bool)
         self.finish_order = []
-        self.lock = asyncio.Lock()
-        self.fly_pos = None
-        self.fly_target = None
-        self.fly_active = False
+        self.lock = asyncio.Lock() #asíncrono, datos compartidos
+        self.position_m = None #mosca en pista
+        self.target = None
+        self.m_up = False #está la mosca despierta? (solo hace daño si lo está)
 
-    async def start_fly(self):
-        if random.random() < 0.5:
-            self.fly_pos = random.randint(5, TRACK_LENGTH - 5)
-            self.fly_target = random.randint(0, NUM_BOTS - 1)
-            self.fly_active = True
-            asyncio.create_task(self.run_fly())
+    async def start_mosca(self):
+        if random.random() < 0.5: #solo se ejecuta la mitad de las veces
+            self.position_m = random.randint(5, len_track - 5) #posicion aleatoria
+            self.target = random.randint(0, num_pingus - 1) #pingu aleatorio 
+            self.m_up = True
+            asyncio.create_task(self.ejecutar_mosca()) #la despierta y lanza la tarea
 
-    async def run_fly(self):
-        while self.fly_active and not self.is_finished():
-            await asyncio.sleep(random.uniform(1.0, 2.5))
+    async def ejecutar_mosca(self):
+        while self.m_up and not self.hass_finished():
+            await asyncio.sleep(random.uniform(1.0, 2.5)) #espera un tiempo para que la mosca se mueva
             async with self.lock:
-                if self.fly_pos is not None:
-                    move = random.choice([-1, 0, 1])
-                    self.fly_pos = max(5, min(TRACK_LENGTH - 5, self.fly_pos + move))
+                if self.position_m is not None: 
+                    move = random.choice([-1, 0, 1]) # o la mueve o a la deja quieta
+                    self.position_m = max(5, min(len_track - 5, self.position_m + move)) 
 
-    async def request_move(self, bot_id):
+    async def request_move(self, pingu_id):
         async with self.lock:
-            if self.fallen_flags[bot_id]:
-                self.positions[bot_id] = 0
-                self.fallen_flags[bot_id] = False
+            if self.caido[pingu_id]: #si está caído vuelve al inicio y luego se pone otra vez como no caido(false)
+                self.position[pingu_id] = 0
+                self.caido[pingu_id] = False
                 return
-            if self.positions[bot_id] < TRACK_LENGTH:
-                self.positions[bot_id] += 1
-                if (self.fly_active and self.fly_pos is not None and
-                    self.fly_target == bot_id and
-                    self.positions[bot_id] == self.fly_pos):
-                    self.fallen_flags[bot_id] = True
-                    self.fly_pos = None
-                    self.fly_active = False
-                if self.positions[bot_id] == TRACK_LENGTH:
-                    self.finish_order.append(bot_id)
+            if self.position[pingu_id] < len_track: #si no ha llegado a la meta avanza una posicion
+                self.position[pingu_id] += 1
+                if (self.m_up and self.position_m is not None and #si llega a la misma posicion que la mosca
+                    self.target == pingu_id and
+                    self.position[pingu_id] == self.position_m):
+                    self.caido[pingu_id] = True #se cae:(
+                    self.position_m = None #desaparece la mosca
+                    self.m_up = False
+                if self.position[pingu_id] == len_track: #ha llegado a la meta entonces se añade a la lista de finish_order
+                    self.finish_order.append(pingu_id)
 
-    def is_finished(self):
-        return len(self.finish_order) == NUM_BOTS
+    def hass_finished(self):
+        return len(self.finish_order) == num_pingus #si han llegado todos los pingus a la meta
 
 
-async def run_bot(bot_id, server):
-    while server.positions[bot_id] < TRACK_LENGTH:
+async def run_pingu(pingu_id, server):
+    while server.position[pingu_id] < len_track:
         await asyncio.sleep(random.uniform(0.1, 0.4))
-        await server.request_move(bot_id)
+        await server.request_move(pingu_id) #mientras que no esté en la meta sigue intentando ab¡vanzar
 
 
-async def print_loop(server, round_number, scores):
-    while not server.is_finished():
-        sys.stdout.write("\033[H\033[J")
-        print(f"RONDA {round_number + 1}/{NUM_RONDAS}".center(50))
-        print(" MARCADOR: " + " | ".join([f"{BOT_NAMES[i]}: {scores[i]} pts" for i in range(NUM_BOTS)]))
+async def animations(server, round_num, scores): 
+    while not server.hass_finished():
+        sys.stdout.write("\033[H\033[J") #un truquito para limpiar la pantalla jijiji
+        print(f"RONDA {round_num + 1}/{num_rounds}".center(50))
+        print(" MARCADOR: " + " | ".join([f"{names_pingus[i]}: {scores[i]} pts" for i in range(num_pingus)]))
         print()
-        for i in range(NUM_BOTS):
-            pos = min(server.positions[i], TRACK_LENGTH - 1)
-            print("          ┌" + "─" * TRACK_LENGTH + "┐")
-            for j in range(3):
-                line = [" "] * TRACK_LENGTH
-                art = FALLEN_ASCII[j] if server.fallen_flags[i] else BOT_ASCII[j]
+        for i in range(num_pingus): #pista
+            pos = min(server.position[i], len_track - 1)
+            print("          ┌" + "─" * len_track + "┐")
+            for j in range(3): #pingus
+                line = [" "] * len_track
+                art = pingu_caido[j] if server.caido[i] else pingus[j]
                 start = max(0, pos - len(art) + 1)
                 for k, ch in enumerate(art):
-                    if start + k < TRACK_LENGTH:
+                    if start + k < len_track:
                         line[start + k] = ch
-                if server.fly_active and server.fly_pos is not None and server.fly_target == i:
-                    fly = FLY_ASCII[j]
-                    fstart = max(0, server.fly_pos - len(fly) + 1)
+                if server.m_up and server.position_m is not None and server.target == i: #mosca
+                    fly = mosca[j]
+                    fstart = max(0, server.position_m - len(fly) + 1)
                     for k, ch in enumerate(fly):
-                        if fstart + k < TRACK_LENGTH:
+                        if fstart + k < len_track:
                             line[fstart + k] = ch
-                prefix = f"{BOT_NAMES[i]:>9}" if j == 1 else "         "
+                prefix = f"{names_pingus[i]:>9}" if j == 1 else "         " #nombres de los pingus
                 print(f"{prefix} │{''.join(line)}│")
-            print("          └" + "─" * TRACK_LENGTH + "┘\n")
-        await asyncio.sleep(REFRESH_TIME)
+            print("          └" + "─" * len_track + "┘\n")
+        await asyncio.sleep(waiting)
 
 
-async def show_final_animation(winner_id, duration=3, interval=0.4):
-    start_time = asyncio.get_event_loop().time()
-    pos = TRACK_LENGTH - 1
-    while asyncio.get_event_loop().time() - start_time < duration:
-        for frame_index in range(len(WINNER_ASCII_FRAMES)):
+async def bailecito(winner_id, d=3, wait_time=0.4):
+    start_time = asyncio.get_event_loop().time() #cogemos el tiempo iniial y vamos ejecutando hasta que acabe
+    pos = len_track - 1
+    while asyncio.get_event_loop().time() - start_time < d:
+        for frame_index in range(len(pingu_happy)):
             sys.stdout.write("\033[H\033[J")
-            for bot_id in range(NUM_BOTS):
-                is_winner = (bot_id == winner_id)
-                frame = WINNER_ASCII_FRAMES[frame_index] if is_winner else LOSER_ASCII_FRAMES[frame_index]
-                for j, line in enumerate(frame):
-                    track_line = [" "] * TRACK_LENGTH
+            for pingu_id in range(num_pingus): #elegir el pingu ganador
+                is_winner = (pingu_id == winner_id)
+                frame = pingu_happy[frame_index] if is_winner else pingu_sad[frame_index]
+                for j, line in enumerate(frame): #dibujos
+                    track_line = [" "] * len_track
                     insert = max(0, pos - len(line) + 1)
                     for k, ch in enumerate(line):
-                        if insert + k < TRACK_LENGTH:
+                        if insert + k < len_track:
                             track_line[insert + k] = ch
-                    prefix = f"{BOT_NAMES[bot_id]:>9}" if j == 1 else "         "
+                    prefix = f"{names_pingus[pingu_id]:>9}" if j == 1 else "         "
                     print(f"{prefix} │{''.join(track_line)}│")
                 print()
-            await asyncio.sleep(interval)
+            await asyncio.sleep(wait_time)
 
 
-async def run_race(round_number, scores):
+async def carrera(round_num, scores): #crear el servidor y encender a la mosca y pingus
     server = Server()
-    await server.start_fly()
-    bots = [run_bot(i, server) for i in range(NUM_BOTS)]
-    printer = asyncio.create_task(print_loop(server, round_number, scores))
-    await asyncio.gather(*bots)
+    await server.start_mosca()
+    bots = [run_pingu(i, server) for i in range(num_pingus)]
+    printer = asyncio.create_task(animations(server, round_num, scores)) #lanzamos la animacion
+    await asyncio.gather(*bots) #terminados
     await printer
 
-    for i, bot_id in enumerate(server.finish_order):
+    for i, pingu_id in enumerate(server.finish_order):
         if i == 0:
-            scores[bot_id] += 3
+            scores[pingu_id] += 3
         elif i == 1:
-            scores[bot_id] += 1
+            scores[pingu_id] += 1
 
     print()
-    await show_final_animation(server.finish_order[0])
+    await bailecito(server.finish_order[0])
     return scores
 
 
 async def main():
-    scores = [0] * NUM_BOTS
-    for round_number in range(NUM_RONDAS):
-        scores = await run_race(round_number, scores)
+    scores = [0] * num_pingus
+    for round_num in range(num_rounds):
+        scores = await carrera(round_num, scores) #puntos y ejecutar todas las rondas
 
-    winner_id = max(range(NUM_BOTS), key=lambda i: scores[i])
-    print("MARCADOR FINAL:")
-    for i in range(NUM_BOTS):
-        print(f"{BOT_NAMES[i]}: {scores[i]} puntos")
+    winner_id = max(range(num_pingus), key=lambda i: scores[i]) #buscamos al pingu ganador y mostramos los puntos
+    print("MARCADOR:")
+    for i in range(num_pingus):
+        print(f"{names_pingus[i]}: {scores[i]} puntos")
     print("\nGANADOR:")
-    print(f"\033[95m{BOT_NAMES[winner_id]} <3<3<3\033[0m")
+    print(f"\033[95m{names_pingus[winner_id]} <3<3<3\033[0m")
 
 
 if __name__ == "__main__":
