@@ -1,8 +1,8 @@
-Carrera de pingüinos asíncornos con los módulos *threading* y *asyncio*: las diferentes aplicaciones de los sistemas distribuídos, el paso d emensajes y la asincronía
+Carrera de pingüinos asíncronos con los módulos *threading* y *asyncio*: las diferentes aplicaciones de los sistemas distribuídos, el paso de mensajes y la asincronía
 
 María García Fernández
 
-2º ciencia e ingeniría de datos, Programación III
+2º ciencia e ingeniería de datos, Programación III
 
 **Sistemas distribuidos**
 
