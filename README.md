@@ -26,7 +26,7 @@ Esta técnica resulta imprescindible en el procesamiento de grandes volúmenes d
 
 “El paso de mensajes es una forma de enviar y recibir datos y comandos entre subprocesos o procesos simultáneos utilizando un canal compartido o una cola. El emisor y el receptor no necesitan compartir ninguna memoria o estado, y no necesitan sincronizar su acceso al canal o la cola.” 
 
-Permite desacoplar a los participantes de la comunicación, es decir, en una aplicación de procesamiento distribuido de grandes volúmenes de datos,  los nodos dividen las tareas y se comunican mediante mensajes para mantener la consistencia del procesamiento. En el caso de las arquitecturas basadas en agentes (en este caso multiagente), cada uno actúa autónomamente  a pesar de que comparte objetivos comunes con las demás.(UAB) Sin embargo, cada proceso mantiene su propio espacio de memoria y se comunica con los demás exclusivamente mediante el envío de mensajes. El objetivo es conseguir un modelo más seguro y escalable, evitando condiciones de carrera y facilitando el diseño de aplicaciones concurrentes.(teoria de clase)
+Permite desacoplar a los participantes de la comunicación, es decir, en una aplicación de procesamiento distribuido de grandes volúmenes de datos,  los nodos dividen las tareas y se comunican mediante mensajes para mantener la consistencia del procesamiento. En el caso de las arquitecturas basadas en agentes (en este caso multiagente), cada uno actúa autónomamente  a pesar de que comparte objetivos comunes con las demás. Sin embargo, cada proceso mantiene su propio espacio de memoria y se comunica con los demás exclusivamente mediante el envío de mensajes. El objetivo es conseguir un modelo más seguro y escalable, evitando condiciones de carrera y facilitando el diseño de aplicaciones concurrentes.
 
 En ciencia de datos, se aplica el paso de mensajes en sistemas como Apache Kafka o Spark que se encargan de gestionar la comunicación de datos en procesos distribuidos. Las comunicaciones están basadas en colas o buffers para gestionar la recolección, transformación y análisis de los datos.
 
@@ -84,7 +84,7 @@ La falta de colas de mensajes explícitas no supone un problema, pues el modelo 
 
 Podemos concluir que el uso de *asyncio* es ventajoso pues consta de menos código y de una estructura más simple, es más eficiente en términos de recursos(no se crean hilos reales) y todo ocurre dentro de un hilo cooperativo reduciendo así el riesgo de errores.
 
-Bibliografía:
+**Bibliografía**
 
 How can you use message passing effectively in concurrent programming?, Linkedin
 
