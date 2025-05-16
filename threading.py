@@ -105,7 +105,7 @@ class Server:
         def delay(self):
             time.sleep(random.uniform(0.1, 0.6))
 
-class Bot(threading.Thread):
+class Pingu(threading.Thread):
     # Esta clase representa un pingüino que corre en la pista.
     # Cada pingüino es un hilo que avanza paso a paso mientras la carrera está activa.
     def __init__(self, pingu_id, server: Server):
@@ -182,7 +182,7 @@ def carrera(round_num, scores):
     # Crea el servidor, lanza los pingüinos (hilos), actualiza pantalla,
     # espera que terminen y actualiza los puntajes según orden de llegada.
     server = Server()
-    pingus_threads = [Bot(i, server) for i in range(num_pingus)]
+    pingus_threads = [Pingu(i, server) for i in range(num_pingus)]
 
     for pingu in pingus_threads:
         pingu.start()
@@ -227,3 +227,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
